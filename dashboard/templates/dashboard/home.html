@@ -1,0 +1,226 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Django Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .dashboard-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .status-healthy { color: green; }
+        .status-warning { color: orange; }
+        .status-critical { color: red; }
+        .status-down { color: red; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8">Dashboard Analytics</h1>
+
+        <!-- Overview Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="dashboard-card">
+                <h3 class="text-sm font-medium text-gray-600">Recent Views (24h)</h3>
+                <p class="text-2xl font-bold mt-2" id="recent-views">--</p>
+            </div>
+            <div class="dashboard-card">
+                <h3 class="text-sm font-medium text-gray-600">Recent Events (24h)</h3>
+                <p class="text-2xl font-bold mt-2" id="recent-events">--</p>
+            </div>
+            <div class="dashboard-card">
+                <h3 class="text-sm font-medium text-gray-600">Active Widgets</h3>
+                <p class="text-2xl font-bold mt-2" id="active-widgets">--</p>
+            </div>
+            <div class="dashboard-card">
+                <h3 class="text-sm font-medium text-gray-600">System Health</h3>
+                <p class="text-2xl font-bold mt-2" id="system-health">--</p>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div class="dashboard-card">
+                <h2 class="text-xl font-semibold mb-4">Page Views (Last 7 Days)</h2>
+                <canvas id="pageViewChart"></canvas>
+            </div>
+            <div class="dashboard-card">
+                <h2 class="text-xl font-semibold mb-4">Event Types (Last 7 Days)</h2>
+                <canvas id="eventChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Health Monitoring -->
+        <div class="dashboard-card">
+            <h2 class="text-xl font-semibold mb-4">System Health History</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Component</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Message</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200" id="healthTable">
+                        <tr>
+                            <td colspan="4" class="px-6 py-4 text-center text-gray-500">Loading health data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dashboard data
+        let dashboardData = {
+            recent_views: 0,
+            recent_events: 0,
+            active_widgets: 0,
+            system_health: 'healthy'
+        };
+
+        // Fetch dashboard data on load
+        async function loadDashboardData() {
+            try {
+                const response = await fetch('/dashboard/api/analytics-overview/');
+                const data = await response.json();
+                dashboardData = data;
+
+                document.getElementById('recent-views').textContent = data.recent_views;
+                document.getElementById('recent-events').textContent = data.recent_events;
+                document.getElementById('active-widgets').textContent = data.active_widgets;
+                
+                const healthElement = document.getElementById('system-health');
+                healthElement.textContent = data.system_health;
+                healthElement.className = `text-2xl font-bold mt-2 status-${data.system_health}`;
+
+                await loadPageStats();
+                await loadEventStats();
+                await loadHealthHistory();
+
+            } catch (error) {
+                console.error('Error loading dashboard data:', error);
+            }
+        }
+
+        // Load page view statistics
+        async function loadPageStats() {
+            try {
+                const response = await fetch('/dashboard/api/page-stats/');
+                const data = await response.json();
+                
+                const ctx = document.getElementById('pageViewChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.page_stats.map(item => item.page),
+                        datasets: [{
+                            label: 'Page Views',
+                            data: data.page_stats.map(item => item.views),
+                            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading page stats:', error);
+            }
+        }
+
+        // Load event type statistics
+        async function loadEventStats() {
+            try {
+                const response = await fetch('/dashboard/api/event-types/');
+                const data = await response.json();
+                
+                const ctx = document.getElementById('eventChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: data.events.map(item => item.event_type),
+                        datasets: [{
+                            label: 'Events',
+                            data: data.events.map(item => item.count),
+                            backgroundColor: [
+                                'rgba(255, 99, 132, 0.5)',
+                                'rgba(54, 162, 235, 0.5)',
+                                'rgba(255, 206, 86, 0.5)',
+                                'rgba(75, 192, 192, 0.5)',
+                                'rgba(153, 102, 255, 0.5)',
+                            ],
+                            borderColor: [
+                                'rgba(255, 99, 132, 1)',
+                                'rgba(54, 162, 235, 1)',
+                                'rgba(255, 206, 86, 1)',
+                                'rgba(75, 192, 192, 1)',
+                                'rgba(153, 102, 255, 1)',
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading event stats:', error);
+            }
+        }
+
+        // Load health history
+        async function loadHealthHistory() {
+            try {
+                const response = await fetch('/dashboard/api/system-health/');
+                const data = await response.json();
+                
+                const healthRecords = data.health_records;
+                const tableBody = document.getElementById('healthTable');
+                
+                if (healthRecords.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No health data available</td></tr>';
+                    return;
+                }
+
+                tableBody.innerHTML = healthRecords.map(record => `
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${record.component}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 status-${record.status}">${record.status}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${record.message}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(record.timestamp).toLocaleString()}</td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading health history:', error);
+            }
+        }
+
+        // Refresh data every 30 seconds
+        loadDashboardData();
+        setInterval(loadDashboardData, 30000);
+    </script>
+</body>
+</html>
